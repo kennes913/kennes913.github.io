@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block extra_header_stuff %}
+<header>
+	<nav>
+		<ul>
+			<li><a href="{{ get_url(path="/" ) }}">home</a></li>
+			<li><a href="https://github.com/kennes913">github</a></li>
+			<li><a href="{{ get_url(path="/key.asc.txt" ) }}">pub.key</a></li>
+			<li><a href="mailto:nom@seankennedy.sh">email</a></li>
+		</ul>
+	</nav>
+</header>
+<style>
+table tr td, table tr th {
+    overflow: hidden;
+    padding: 0.0 0.225rem;
+}
+tr:nth-child(even) {background-color: #f2f2f2;}
+</style>
+{% endblock extra_header_stuff %}
+
+{% block content %}
+<section>
+	<article>
+		<figure>
+
+			<img
+				src="./circuit-blue.png"
+				width="100" height="100">
+
+		</figure>
+		<br>
+		<table>
+			<tbody>
+				{% for page in paginator.pages %}
+				<tr>
+					<td><a href="{{ page.permalink | safe }}"> {{ page.title }}</a></td> <td><time>{{
+							page.date }}</time></td>
+				</tr>
+				{% endfor %}
+			</tbody>
+		</table>
+	</article>
+</section>
+{% endblock content %}

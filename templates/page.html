@@ -1,0 +1,28 @@
+
+{% extends "base.html" %}
+
+{% block title %}
+{{ page.title }}
+{% endblock %}
+
+{% block extra_header_stuff %}
+<style>
+    code {
+        background: rgb(190, 190, 190);
+        border-radius: 3.6px;
+        color: #000000;
+        display: inline-block;
+        line-height: 1.125rem;
+        padding: 0.225rem 0.39375rem 0.16875rem;
+    }
+</style>
+{% endblock extra_header_stuff %}
+
+{% block content %}
+<aside><a href="{{ config.base_url }}">home</a></aside>
+<section>
+    <h2>{{ page.title }}</h2>
+    <br>
+    {{ page.content | safe }}
+</section>
+{% endblock content %}
