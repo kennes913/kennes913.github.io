@@ -3,8 +3,7 @@ name: "Zola CD"
 on:
   push:
     branches:
-      - main 
-  pull_request:
+      - main
 
 jobs:
   deploy-to-gh-pages:
