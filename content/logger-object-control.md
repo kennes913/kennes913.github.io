@@ -1,9 +1,9 @@
 +++
-title = "fine-grained logger object control"
+title = "dynamically control logger objects in python"
 date = 2020-07-16
 +++
 
-The python logging library is more powerful than you think. As I've used `logging` more, I've become accustomed to the ways it can be finely controlled in source code. This post will explore 1 way.
+The python logging library is more powerful than you think. As I've used the logging library more, I've become accustomed to the ways it can be finely controlled in source code. This post will explore 1 way.
 
 Here's a directory structure:
 
@@ -17,7 +17,7 @@ Here's a directory structure:
     └── set_loggers.py
 ```
 
-The logging code is the same in the 3 modules `pkg.foo`, `pkg.bar` and `pkg.baz`:
+The logging code is the same in the 3 modules: **foo.py**, **bar.py** and **baz.py**:
 
 ```python
 import logging
@@ -35,7 +35,7 @@ def run_statements():
 
 ```
 
-The central logging config is in `pkg.config`:
+The central logging config is in **config.py**:
 
 ```python
 # config.py
@@ -141,10 +141,10 @@ IPython 7.9.0 -- An enhanced Interactive Python. Type '?' for help.
 ```
 
 It's hard to tell from the output, but this source code does 2 important things:
-- access the `logging.root.manager` object
+- access the **logging.root.manager** object
 - selectively activate and deactivate a logger object by adding/removing a handler
 
-Now you have fine-grained logging control in your source code. All possible because of the existence of the `logging.root.manager.loggerDict` global object -- a dictionary containing the logging hierarchy of your source code:
+Now you have fine-grained logging control in your source code. All possible because of the existence of the **loggerDict** global object -- a dictionary containing the logging hierarchy of your source code:
 
 ```python
 In [1]: logging.root.manager.loggerDict
@@ -175,11 +175,4 @@ pkg.foo [<NullHandler (NOTSET)>]
 pkg.bar [<NullHandler (NOTSET)>, <StreamHandler <stdout> (NOTSET)>]
 pkg.baz [<NullHandler (NOTSET)>, <StreamHandler <stdout> (NOTSET)>]
 ```
-When a message is logged via `logger.info`, the logger will chain the message through registered handlers. In this case, the `pkg.bar` and `pkg.baz` loggers send the message to a `NullHandler` object and then to the `StreamHandler` object eventually printing to stdout.
-
-At some point, I've wanted to do 1 of the following things:
-- bypass package logging that was written without understanding of the logging library
-- supress the verbosity of logging at various levels in complex packages
-- dynamically modify logging hierarchy to handle edge cases in your code
-
-This has helped me do these things.
+When a message is logged via logger.info, the logger will chain the message through registered handlers. In this case, the **pkg.bar** and **pkg.baz** loggers send the message to a **NullHandler** object and then to the **StreamHandler** object eventually printing to stdout.

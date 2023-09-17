@@ -1,11 +1,13 @@
 +++
-title = "automate password auth during scp operations"
+title = "control scp with python"
 date = 2020-03-01
 +++
 
-A common task in day-to-day engineering is trasferring files from host to host. The optimal tooling choice in many cases is a binary like `rsync` or `scp`. **Use `rsync` or `scp` please**.  The intention of this post is to toy around with an unconventional way to move files across hosts using python not convince you to use something else.
+A common task in day-to-day engineering is trasferring files from host to host. The optimal tooling choice in many cases is a binary like **rsync** or **scp**. What would this look like if we used python to control these lower level binaries instead? Can you get anything out of doing this?
 
-We can do this with python using [pexpect](https://github.com/pexpect/pexpect). pexpect is _a pure python module for spawning child applications; controlling them; and responding to expected patterns in their output_. The idea is that we can use the pexpect API to control system binaries and manipulate them using python's flow control.
+*TL;DR; The short answer is yes. The 1 main benefit you get is being able to use the niceties of python's flow control to handle lower level binaries.*
+
+In this example, we automate password authentatication. You can do this with python using [pexpect](https://github.com/pexpect/pexpect). pexpect is _a pure python module for spawning child applications; controlling them; and responding to expected patterns in their output_. The idea is that we can use the pexpect API to control system binaries and manipulate them using python's flow control.
 
 Here is some sample code I've written that moves target files to a remote host:
 
@@ -57,11 +59,11 @@ def put(
 ```
 
 Here are the rough steps of the example:
-1. spawn an application running `scp`
+1. spawn an application running scp
 2. handle each buffered line of the output
 3. `yield` each line to a logging decorator
 
-The interesting part of this whole thing is handling `pexpect`-ed things. Typically, `scp` requires manual user authentication or else the process halts, but we handle this easily with pexpect (using regex). You can imagine extending this to other binaries that are typically restricted by manual user inputs.
+The interesting part of this whole thing is handling **pexpect**-ed things. Typically, scp requires manual user authentication or else the process halts, but we handle this easily with pexpect (using regex). You can imagine extending this to other binaries that are typically restricted by manual user inputs.
 
 Here is some log output from the above process:
 
