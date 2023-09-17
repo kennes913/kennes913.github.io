@@ -1,0 +1,16 @@
+name: "Zola CI"
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@master
+      - name: 'Build only' 
+        uses: shalzz/zola-deploy-action@master
+        env:
+          BUILD_DIR: .
+          BUILD_ONLY: true
