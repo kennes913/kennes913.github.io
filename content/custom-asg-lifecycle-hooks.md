@@ -35,7 +35,7 @@ To do this, we first added an initial lifecycle hook to the auto-scaling group i
 
 The above ensures that the node will not automatically transition into the 'InService' state. The default action after (2000 / 60) minutes would be to automatically transition. This handles the edge case where something goes wrong with the custom lifecycle hook. 
 
-I had to also reate a systemd job -- since we're running linux -- that would emit the node's readiness status to the ASG. Here's the systemd service file (ec2-user is root user on EC2 instances):
+I had to also create a systemd job -- since we're running linux -- that would emit the node's readiness status to the ASG. Here's the systemd service file (ec2-user is root user on EC2 instances):
 
 ```toml
 [Unit]
@@ -45,7 +45,7 @@ Description=Application readiness checks.
 Type=simple
 ExecStart=/script/dir/file.sh
 Restart=on-failure
-WorkingDirectory=/script/dir/
+WorkingDirectory=/script/dir
 RestartSec=30
 User=ec2-user
 
