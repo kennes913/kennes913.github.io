@@ -7,7 +7,7 @@ default_language = "en"
 compile_sass = false
 
 # When set to "true", the generated HTML files are minified.
-minify_html = true 
+minify_html = true
 
 # A list of glob patterns specifying asset files to ignore when the content
 # directory is processed. Defaults to none, which means that all asset files are
@@ -15,9 +15,6 @@ minify_html = true
 # Example:
 #     ignored_content = ["*.{graphml,xlsx}", "temp.*"]
 ignored_content = []
-
-# When set to "true", a feed is automatically generated.
-generate_feed = false
 
 # When set to "true", files in the `static` directory are hard-linked. Useful for large
 # static files. Note that for this to work, both `static` and the
@@ -43,7 +40,7 @@ highlight_code = true
 
 # The theme to use for code highlighting.
 # See below for list of allowed values.
-highlight_theme = "dimmed-fluid"
+highlight_theme = "ir-white"
 
 # When set to "true", emoji aliases translated to their corresponding
 # Unicode emoji equivalent in the rendered Markdown files. (e.g.: :smile: => 😄)
