@@ -467,7 +467,7 @@ listening on services1, link-type EN10MB (Ethernet), snapshot length 262144 byte
 
 Alright this makes a little more sense now. This is the only easy example I could come up with, but I bet you there's other traffic that will come through this interface related to the abovementioned services.
 
-#### Packet route recap
+#### Packet Route Recap
 
 Let’s recap the packet path we’ve uncovered for an ICMP packet in a default macOS Docker Desktop installation. When you issue a ping request, the packet follows these steps:
 
@@ -476,7 +476,6 @@ Let’s recap the packet path we’ve uncovered for an ICMP packet in a default 
 - **Reaches the docker0 bridge interface:** Since the vethxxxxx interface is part of the docker0 bridge, the packet is routed through docker0.
 - **Routed to the VM’s eth0 interface:** The docker0 bridge forwards the packet to the VM’s eth0 interface, which connects via a virtual device to vpnkit running on macOS.
 - **Processed by vpnkit:**
-    - In vpnkit, the following transformations occur:
     - The packet is switched to a newly created TCP/IP endpoint by the MirageOS TCP/IP stack.
     - The MirageOS TCP/IP stack opens a socket and makes a SOCK_STREAM or SOCK_DGRAM system call.
     - The connection between the vpnkit switch and the TCP/IP endpoint remains open for future use by the container.
