@@ -3,9 +3,7 @@ title = "surprisingly thorny docker packet tracing"
 date = 2025-01-03
 +++
 
-When I sat down to write this, I ambitiously started off by trying to understand exactly how all packets go from a running docker container to the internet.
-
-More specifically, I wanted to take a default Docker Desktop v.4.37.1 instllation for macOS and run the following:
+When I started writing this, my goal was to unravel exactly how packets travel from a running Docker container (Docker Desktop v4.37.1) to the internet. Specifically, I wanted to understand how packets make it to the internet when you run something like:
 
  ```bash
  skennedy@sophon$ docker run --rm -it alpine sh
@@ -19,13 +17,11 @@ PING ifconfig.me (34.160.111.145): 56 data bytes
 64 bytes from 34.160.111.145: seq=4 ttl=63 time=9.197 ms
  ```
 
-And trace where these packets go.
+I spent a lot of time tracing packets and mostly understand their route from local container to the public internet, however, some parts of the process remain obfuscated from tracing tools. I want this post to be more of an exploratory dive into the docker TCP/IP stack and I’d like to share some things I discovered along the way.
 
-I did a lot of packet tracing and I still don't feel like I understand the complete route at the packet level because there are some black boxes along the way. Instead this has turned into a blind exploration and I simply want to share some things I found interesting.
+#### Docker Runs in a VM
 
-#### Docker runs in an VM
-
-The first one and I'm a little embarrassed to admit this but apparently the Docker Engine runs in a VM on your macOS. When you run something like:
+The first discovery—and I’ll admit, it’s a bit embarrassing—is that the Docker Engine actually runs in a VM on macOS. When you execute a command like:
 
 ```bash
 docker run --rm -it --privileged --network=host alpine sh
@@ -77,14 +73,14 @@ services1 Link encap:Ethernet  HWaddr 3E:91:24:52:5D:0D
 
 ```
 
-None of these interfaces will exist on your local host and likewise when you run a container in the default network, you're not bridging directly to local host. You have to traverse the Docker VM first. This brings me to next discovery.
+None of these interfaces exist on your local host. Similarly, when you run a container on the default network (no `--network=host` flag), the container's traffic isn't routed directly to the host TCP/IP stack; instead, it's traffic must first pass through the Docker VM. This leads to my next discovery.
 
-#### Virtual Ethernet Device Pairs for each container
+#### Virtual Ethernet Device Pairs
 
-Containers that are run in the default "bridge" network use virtual ethernet interfaces to route traffic to the Docker VM. Like I mentioned once already, the containers have to route traffic to the Docker VM first before it can be routed publicly and they use virtual ethernet pairs to do this.
+Containers running on the default 'bridge' network use virtual ethernet interfaces to route traffic to the Docker VM. As mentioned earlier, all container traffic is first routed to the Docker VM before being sent to the public network, with virtual Ethernet pairs facilitating this connection.
 
 
-Let's start a default network container:
+Let's view this by starting a container on the default network:
 
 ```bash
 / # echo $HOSTNAME
@@ -92,10 +88,11 @@ b31eaaba7445
 skennedy@sophon$ docker run --rm -it alpine sh
 ```
 
-
-Let's take a look at Docker VM interfaces:
+And let's see what happens to the interfaces on the VM:
 
 ```bash
+/ # echo $HOSTNAME
+docker-desktop
 / # ifconfig
 docker0   Link encap:Ethernet  HWaddr 02:42:71:DA:BC:58
           inet addr:172.17.0.1  Bcast:172.17.255.255  Mask:255.255.0.0
@@ -143,7 +140,9 @@ veth8712c33 Link encap:Ethernet  HWaddr D6:5E:66:25:98:DA
           collisions:0 txqueuelen:0
           RX bytes:10379 (10.1 KiB)  TX bytes:2503289 (2.3 MiB)
 ```
-You can see a new one was added:
+
+
+Comparing this ifconfig output to the original output above, you can see a new interface was added:
 
 ```bash
 / # ifconfig
@@ -156,11 +155,13 @@ veth8712c33 Link encap:Ethernet  HWaddr D6:5E:66:25:98:DA
           RX bytes:10379 (10.1 KiB)  TX bytes:2503289 (2.3 MiB)
 ```
 
-The [veth]([https://man7.org/linux/man-pages/man4/veth.4.html) prefix is a giveaway that this interface is a virtual ethernet device. The application for containers is spelled out in the man pages:
+This is related to the container we started up. Let me explain.
+
+The [veth]([https://man7.org/linux/man-pages/man4/veth.4.html) prefix is a giveaway that this interface is a virtual ethernet device. The application of veth interfaces for the container to VM relationship is spelled out in the man pages:
 
 > "veth device pairs are useful for combining the network facilities of the kernel together in interesting ways.  A particularly interesting use case is to place one end of a veth pair in one network namespace and the other end in another network namespace, thus allowing communication between network namespaces."
 
-Right. Right. Containers get their own network namespace when they run. These containers need a way to route from their network namespace to the VM's network namespace. In other words, you have one virtual ethernet interface on the host and one on the container. Let's get more information on the virtual ethernet device in on the VM:
+Right. Right. Containers get their own network namespace when they run. These containers need a way to route from their network namespace to the VM's network namespace. In other words, you have one virtual ethernet interface on the host and one on the container. Let's get more information on the virtual ethernet device on the VM:
 
 ```bash
 / # ip link show veth8712c33
@@ -168,7 +169,7 @@ Right. Right. Containers get their own network namespace when they run. These co
     link/ether d6:5e:66:25:98:da brd ff:ff:ff:ff:ff:ff
 ```
 
-The command above gives you 2 critical pieces of information, the layer 2 link id (34) and the address of the link id of the container (@if33). Let's view the veth interface in the container. Let's start by looking at the container interfaces:
+The command above provides two key pieces of information: the veth interface index (34) and the container's interface index (@if33). Now, let’s examine the veth interface inside the container, starting with its network interfaces:
 
 ```bash
 / # echo $HOSTNAME
@@ -195,7 +196,7 @@ lo        Link encap:Local Loopback
     link/ether 02:42:ac:11:00:02 brd ff:ff:ff:ff:ff:ff
 ```
 
-It looks like we're getting somewhere. The address of our VM veth interface link id was 34 and the layer 2 link id of this interface is 33, which matches veth8712c33@if33. It appears that these 2 are paired. How can I test this? Since it looks like eth0 is the interface that is paired, let's send a packet directly out of eth0:
+This makes sense. The address of our VM veth interface interface index was 34 and the interface index of this interface is 33, which matches veth8712c33@if33. It appears that these 2 are paired. Since it looks like **eth0** is the interface that is paired, let's send a packet directly out of eth0:
 
 ```bash
 / # echo $HOSTNAME
@@ -224,7 +225,7 @@ tcpdump: listening on veth8712c33, link-type EN10MB (Ethernet), snapshot length 
 
 I am tracing only ICMP packets using **tcpdump** on the VM endpoint (veth8712c33) of the virtual ethernet pair. You can see that the packet src IP comes through as 172.17.0.2 and is sending a ICMP echo request to 34.160.111.145 which is the resolved IP for ifconfig.me.
 
-Cool. This pair has been verified. What's also interesting is that this seems to happen for every container run in the default network:
+Cool. This pair has been verified. What's also interesting is that this seems to happen for every container run in the default network. Let's start another container:
 
 ```bash
 skennedy@sophon$ docker run --rm -it alpine sh
@@ -243,9 +244,9 @@ docker-desktop
 36: veth84af899@if35: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 65535 qdisc noqueue master docker0 state UP
 ```
 
-OKAY. So we now know how packets are routed to the VM. Let's revisit some details of the ping.
+This also makes sense. We now know how packets are initially routed to the VM. Let's revisit some details of the ping.
 
-#### vpnkit is the VMs TCP/IP stack
+#### vpnkit is the VMs TCP/IP Stack
 
 If you recall, the source IP of traffic coming from the container above was 172.17.0.2. Putting aside how the container gets assigned that IP, how does that packet get its source IP? Let's take a look at routes on the container:
 
@@ -255,9 +256,9 @@ b31eaaba7445
 / # ip route get 34.160.111.145
 34.160.111.145 via 172.17.0.1 dev eth0  src 172.17.0.2
 ```
-That routing rule reads "for traffic that is destined for 34.160.111.145, the next hop is 172.17.0.1 and uses the **eth0** device using the source IP 172.17.0.2. If you recall, when this packet goes through this interface, it automatically appears on the VM (because of veth pairs) and thus begins its routing there so let's see where that packet is headed next.
+The routing rule specifies: 'For traffic destined for 34.160.111.145, use 172.17.0.1 as the next hop, route it through the eth0 device, and set the source IP to 172.17.0.2.' When the packet passes through this interface, it automatically appears on the Docker VM (thanks to the veth pairs). From there, the packet's journey continues—so let’s examine where it’s headed next, which first requires a little more context on the VM's veth interface for this container.
 
-If you take a look at any veth interface:
+If you take a look at any veth interface on the VM:
 
 ```bash
 / # echo $HOSTNAME
@@ -267,7 +268,7 @@ docker-desktop
     link/ether d2:38:3a:e7:e9:94 brd ff:ff:ff:ff:ff:ff
 ```
 
-You'll see that docker0 is listed there. This means that this interface is a member of docker0 and typically that means docker0 is a bridge. Let's verify this:
+You'll see that docker0 is listed there. This means that this interface is a member of docker0 which indiciates that docker0 could be a bridge. Let's verify this:
 
 ```bash
 / # echo $HOSTNAME
@@ -277,7 +278,7 @@ bridge name     bridge id               STP enabled     interfaces
 docker0         8000.02427378d4b8       no              vethc81ca61
 ```
 
-So docker0 acts as a bridge for all containers to the VM. I'm sure if I add another container, a new member of the docker0 bridge will be present:
+Does docker0 act as a bridge for all containers to the VM? Let's add another container and check the members of the docker0 bridge:
 
 ```bash
 / # brctl show docker0
@@ -286,7 +287,7 @@ docker0         8000.02427378d4b8       no              vethbf720cd
                                                         vethc81ca61
 ```
 
-Okay, great so we now have verified that the packet goes to docker0. Let's trace the packet there:
+This is all making a little more sense now. We have verified that the packet goes to docker0 on the VM. Let's trace the packets flowing through that interface:
 
 ```bash
 / # tcpdump -n -i docker0 -vvv
@@ -303,9 +304,9 @@ tcpdump: listening on docker0, link-type EN10MB (Ethernet), snapshot length 2621
     34.160.111.145 > 172.17.0.2: ICMP echo reply, id 31, seq 0, length 64
 ```
 
-This looks good. We see the packet arrive on docker0, make a DNS request to another interface to get ifconfig.me's IP and then eventually get back an ICMP echo request.
+This looks promising. We see the packet arrive on docker0, make a DNS request through another interface to resolve ifconfig.me's IP, and eventually receive an ICMP echo request in response.
 
-At this point, I want to remind you that the destination of the packet was 34.160.111.145 not 172.17.0.1. It can be tricky to see the above and assume docekr0 is the interface that the packet went out to the internet on, but no. Let's view our routes again:
+However, let me remind you: the packet’s destination was 34.160.111.145, not 172.17.0.1. It’s easy to mistakenly assume that docker0 is the interface used to send the packet to the internet—but that’s not the case. Let’s review our VM routes again to clarify:
 
 ```bash
 / # echo $HOSTNAME
@@ -331,7 +332,7 @@ tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 
     34.160.111.145 > 192.168.65.3: ICMP echo reply, id 23, seq 0, length 64
 ```
 
-Okay so we now know this packet goes out of eth0 on the VM, but where to now? There are no other VM interfaces for this thing to go to. This must mean it gets routed to the host. I will save you some suspense here, but the only interface that sees this on your host is the current active interface you're using to connect to the internet. Mine is **en9**:
+Now we know the packet exits through eth0 on the VM—but where does it go next? With no other VM interfaces for it to route to, it must be heading to the host. To save you some suspense: the only interface on your host that sees this packet is the active interface you’re using to connect to the internet. In my case, that’s **en9**:
 
 ```bash
 my-mac-host:~ root# tcpdump -n -i en9 -vvv | grep 34.160.111.145
@@ -346,23 +347,19 @@ This still doesn't explain how the packet traversed from the VM to my host and a
 VM -- eth0 ---> [        ] ---> mac --- en9 --> Internet
 ```
 
-That empty box is something called vpnkit. From this [blog article](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-hood/), vpnkit is:
+This tool was designed to prevent conflicts between VPN network modifications and guest VM network changes. Essentially, it provides a separate TCP/IP stack for the VM without requiring changes to routes, firewall rules, or other TCP/IP settings on the host. This is why no packets appear to be routed through the host system.
 
-> "a TCP/IP stack written in OCaml on top of the network protocol libraries of the MirageOS Unikernel project"
+The [documentation](https://github.com/moby/vpnkit/blob/master/docs/ethernet.md) clarifies several key points:
 
-This tool was created to avoid clashes between VPN network modifications and guest VM network modifications. In other words, this tool implements a separate TCP/IP stack for the VM without having to modify routes, firewall rules or any additional TCP/IP stack stettings on the host. This is why you don't see any packets routed through the host system.
+- How the Docker VM connects to vpnkit on the host
+- What happens to Ethernet frames when they reach vpnkit
+- The steps involved in establishing a TCP connection
 
+TL;DR: The VM communicates with vpnkit, running on the host, through a virtual network interface. When vpnkit receives Ethernet frames from the VM, it creates individual virtual TCP/IP endpoints that act as proxies for the VM—this is the "magic." These TCP/IP endpoint proxies make SOCK_STREAM and SOCK_DGRAM system calls to sockets on the host, allowing the host to see only the outgoing TCP or UDP packets on its network interfaces.
 
-The documentation found [here](https://github.com/moby/vpnkit/blob/master/docs/ethernet.md) explains a few things:
-- How the Docker VM is connected to vpnkit on the host
-- What happens to ethernet frames when they arrive in vpnkit
-- The process of a TCP connection
+#### dockerd and vpnkit High Level Network Services
 
-**TL;DR;** The VM talks to vpnkit running on the host through a virtual network interface. When vpnkit on the host receives ethernet frames from the VM, vpnkit creates individual virtual tcp/ip endpoints that act as proxies for the VM (this is the magic). These tcp/ip endpoint proxies send `SOCK_STREAM` and `SOCK_DGRAM` system calls to sockets on the host such that the host only sees the outgoing TCP or UDP packets on some interface.
-
-#### dockerd and vpnkit high level network services?
-
-There are also some higher level network services that vpnkit and dockerd implement such as HTTP Proxy, Docker API proxy and DNS. We actually encountered one of these services earlier: DNS. If you recall our packet trace on **docker0**, there was a DNS query made:
+vpnkit and dockerd also implement higher-level network services, including an HTTP proxy, Docker API proxy, and DNS. In fact, we encountered one of these services earlier: DNS. If you recall from our packet trace on docker0, there was a DNS query made:
 
 ```bash
 / # echo $HOSTNAME
@@ -377,7 +374,7 @@ tcpdump: listening on docker0, link-type EN10MB (Ethernet), snapshot length 2621
 ...
 ```
 
-Let's see where this goes:
+Let's investigate where packets routed to 192.168.65.7 go by inspecting the associated interfaces:
 
 ```bash
 / # ip route get 192.168.65.7
@@ -458,7 +455,7 @@ seankennedy.sh.         377     IN      A       104.21.15.12
 ;; MSG SIZE  rcvd: 92
 ```
 
-and let's view the VM trace of services1:
+And a dig without a trace on the interface in question is useless so let's trace the serviecs1 interface for DNS traffic:
 
 ```bash
 / # tcpdump -n -i services1 "port 53"
@@ -468,23 +465,24 @@ listening on services1, link-type EN10MB (Ethernet), snapshot length 262144 byte
 17:16:13.039491 IP 192.168.65.7.53 > 192.168.65.6.35799: 26543 2/0/0 A 172.67.160.254, A 104.21.15.12 (92)
 ```
 
-Okay. This makes things a little more obvious, but there's probably other sorts of traffic that is routed through this interface and I may explore this in other posts.
+Alright this makes a little more sense now. This is the only easy example I could come up with, but I bet you there's other traffic that will come through this interface related to the abovementioned services.
 
 #### Packet route recap
 
-Let's recap the packet path we've discovered given a ICMP packet and a default macOS Docker Desktop installation:
+Let’s recap the packet path we’ve uncovered for an ICMP packet in a default macOS Docker Desktop installation. When you issue a ping request, the packet follows these steps:
 
-When you make a ping request, the packet does the following:
+- **Exits the container via eth0:** The packet is sent through the container’s eth0 over a virtual Ethernet interface.
+- **Appears on the VM’s peer endpoint (vethxxxxx):** The packet arrives at the peer endpoint interface (vethxxxxx) within the VM.
+- **Reaches the docker0 bridge interface:** Since the vethxxxxx interface is part of the docker0 bridge, the packet is routed through docker0.
+- **Routed to the VM’s eth0 interface:** The docker0 bridge forwards the packet to the VM’s eth0 interface, which connects via a virtual device to vpnkit running on macOS.
+- **Processed by vpnkit:**
+    - In vpnkit, the following transformations occur:
+    - The packet is switched to a newly created TCP/IP endpoint by the MirageOS TCP/IP stack.
+    - The MirageOS TCP/IP stack opens a socket and makes a SOCK_STREAM or SOCK_DGRAM system call.
+    - The connection between the vpnkit switch and the TCP/IP endpoint remains open for future use by the container.
+- **Exits through the host’s active network interface:** The packet leaves the host through the currently active network interface (for me, this was en9).
 
-- Goes out **eth0** of the container over a virtual ethernet interface
-- Appears on the peer endpoint **vethxxxxx** interface of the VM
-- It arrives on the **docker0** bridge interface because **vethxxxxx** interface is a member of the **docker0** interface and verified this.
-- This **docker0** interface routes the packet to the VM **eth0** interface connected via a virtual device on the VM to vpnkit running on macOS
-- In vpnkit some magic happens:
-    - The packet gets switched to a newly created TCP/IP endpoint created by the mirageOS TCP-IP stack
-    - The mirageOS TCP-IP stack opens a socket and makes a `SOCK_STREAM` or `SOCK_DGRAM` system call
-- The packet egresses from the default active interface of the host. For me, this was **en9**.
-- The connection between the vpnkit switch and TCP/IP endpoint stays open for reuse from the container.
+This step-by-step breakdown captures the packet’s journey, highlighting the role of each interface and vpnkit in handling traffic from the container to the internet.
 
 
 
