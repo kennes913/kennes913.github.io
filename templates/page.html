@@ -7,6 +7,7 @@
 
 {% block extra_header_stuff %}
 <style>
+    /* Ensure code blocks fit within mobile screens */
     code {
         background: rgb(190, 190, 190);
         border-radius: 3.6px;
@@ -14,6 +15,33 @@
         display: inline-block;
         line-height: 1.125rem;
         padding: 0.225rem 0.39375rem 0.16875rem;
+        word-wrap: break-word; /* Allow breaking long code strings */
+        max-width: 100%; /* Prevent code blocks from exceeding screen width */
+        overflow-x: auto; /* Add horizontal scrolling for long code blocks */
+    }
+
+    /* Ensure sections and content scale properly on smaller screens */
+    section {
+        padding: 1em;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    aside a {
+        display: inline-block;
+        margin: 0.5em 0;
+        word-break: break-word; /* Prevent long links from breaking layout */
+    }
+
+    /* Responsive adjustments for smaller screens */
+    @media (max-width: 768px) {
+        section {
+            padding: 0.75em; /* Adjust padding for smaller screens */
+        }
+
+        h2 {
+            font-size: 1.5em; /* Scale down headings on mobile */
+        }
     }
 </style>
 {% endblock extra_header_stuff %}
